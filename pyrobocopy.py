@@ -44,6 +44,8 @@ Additional Options:\n
 \t                    target directory should exist.)
 \t-m, --modtime     - Only compare file's modification times for an update (By default,
 \t                    compares source file's creation time also).
+\t--ignore          - Ignores the specified file. Can be declared multiple times.
+\t                    Use: --ignore=fileName1 --ignore=fileName2
 """                   
 
 
@@ -58,6 +60,7 @@ class PyRobocopier:
 
         self.__dir1 = ''
         self.__dir2 = ''
+        self.__ignore = []
         self.__dcmp = None
         
         self.__copyfiles = True
@@ -127,7 +130,9 @@ class PyRobocopier:
             elif option.lower() in ('-c', '--create'):
                 self.__maketarget = True
             elif option.lower() in ('-m', '--modtime'):
-                self.__modtimeonly = True                            
+                self.__modtimeonly = True
+            elif option.lower().startswith('--ignore='):
+                self.__ignore.append(option[9:])
             else:
                 if self.__dir1=='':
                     self.__dir1 = option
@@ -142,6 +147,9 @@ class PyRobocopier:
             sys.exit("Argument Error: Target directory %s does not exist! (Try the -c option)." % self.__dir2)
         if self.__mainfunc is None:
             sys.exit("Argument Error: Specify an action (Diff, Synchronize or Update) ")
+
+        if len(self.__ignore) > 0:
+            print("Ignored files list: ", self.__ignore)
 
         self.__dcmp = filecmp.dircmp(self.__dir1, self.__dir2)
 
@@ -163,13 +171,13 @@ class PyRobocopier:
         self.__mainfunc()
         self.__endtime = time.time()
         
-    def __dowork(self, dir1, dir2, copyfunc = None, updatefunc = None):
+    def __dowork(self, dir1, dir2, ignore = None, copyfunc = None, updatefunc = None):
         """ Private attribute for doing work """
         
         print 'Source directory: ', dir1, ':'
 
         self.__numdirs += 1
-        self.__dcmp = filecmp.dircmp(dir1, dir2)
+        self.__dcmp = filecmp.dircmp(dir1, dir2, ignore)
         
         # Files & directories only in target directory
         if self.__purge:
@@ -215,7 +223,7 @@ class PyRobocopier:
                     try:
                         # Copy tree
                         print 'Copying tree', fulld2
-                        shutil.copytree(fulld1, fulld2)
+                        shutil.copytree(fulld1, fulld2, ignore=shutil.ignore_patterns(*self.__ignore))
                         self.__numnewdirs += 1
                         print 'Done.'
                     except shutil.Error, e:
@@ -242,8 +250,7 @@ class PyRobocopier:
                 fulld1 = os.path.join(dir1, f1)
                 fulld2 = os.path.join(dir2, f1)
                 # Call tail recursive
-                self.__dowork(fulld1, fulld2, copyfunc, updatefunc)
-                
+                self.__dowork(fulld1, fulld2, ignore, copyfunc, updatefunc)
 
     def __copy(self, filename, dir1, dir2):
         """ Private function for copying a file """
@@ -383,17 +390,17 @@ class PyRobocopier:
 
         return -1
 
-    def __dirdiffandcopy(self, dir1, dir2):
+    def __dirdiffandcopy(self, dir1, dir2, ignore):
         """ Private function which does directory diff & copy """
-        self.__dowork(dir1, dir2, self.__copy)
+        self.__dowork(dir1, dir2, ignore, self.__copy)
 
-    def __dirdiffandupdate(self, dir1, dir2):
+    def __dirdiffandupdate(self, dir1, dir2, ignore):
         """ Private function which does directory diff & update  """        
-        self.__dowork(dir1, dir2, None, self.__update)
+        self.__dowork(dir1, dir2, ignore, None, self.__update)
 
-    def __dirdiffcopyandupdate(self, dir1, dir2):
+    def __dirdiffcopyandupdate(self, dir1, dir2, ignore):
         """ Private function which does directory diff, copy and update (synchro) """               
-        self.__dowork(dir1, dir2, self.__copy, self.__update)
+        self.__dowork(dir1, dir2, ignore, self.__copy, self.__update)
 
     def __dirdiff(self):
         """ Private function which only does directory diff """
@@ -430,7 +437,7 @@ class PyRobocopier:
         self.__copydirection = 0
 
         print 'Synchronizing directory', self.__dir2, 'with', self.__dir1 ,'\n'
-        self.__dirdiffcopyandupdate(self.__dir1, self.__dir2)
+        self.__dirdiffcopyandupdate(self.__dir1, self.__dir2, self.__ignore)
 
     def update(self):
         """ Update will try to update the target directory
@@ -444,7 +451,7 @@ class PyRobocopier:
         self.__creatdirs = False
 
         print 'Updating directory', self.__dir2, 'from', self.__dir1 , '\n'
-        self.__dirdiffandupdate(self.__dir1, self.__dir2)
+        self.__dirdiffandupdate(self.__dir1, self.__dir2, self.__ignore)
 
     def dirdiff(self):
         """ Only report difference in content between two
